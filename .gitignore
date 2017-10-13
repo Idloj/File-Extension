@@ -1,0 +1,15 @@
+.DS_Store
+*.iml
+bin/
+.project
+.settings
+.classpath
+target/
+.gitignore.swp
+project/target/
+.idea/
+*.jar
+*.jar.pack.gz
+*.zip
+extensions/
+tmp/
