@@ -1,459 +1,409 @@
 
-# LS Extension for NetLogo
+# File Extension for NetLogo
 
-LevelSpace is an extension for NetLogo that allows you to run several models concurrently and have them "talk" with each other. LevelSpace models are hierarchical, in that models always belong hierarchically to another model. In this documentation, we will refer to models that have loaded LevelSpace and have opened models as 'parents', and to the models they have opened as 'children' or 'child models'.
+The file extension gives you the power to interact with outside files.
 
-## LevelSpace fundamentals
+There are two main modes when dealing with files: reading and writing. The
+difference is the direction of the flow of data. When you are reading in
+information from a file, data that is stored in the file flows into your model.
+On the other hand, writing allows data to flow out of your model and into a file.
 
-LevelSpace must be loaded in a model using ```extensions [ls]``` at the top of your model. Once this is done, a model will be able to load up other models using the LevelSpace primitives, run commands and reporters in them, and close them down when they are no longer needed.
+When working with files, always begin by using the primitive [file:open](#fileopen). This
+specifies which file you will be interacting with. None of the other primitives
+work unless you open a file first.
 
-Asking and reporting in LevelSpace is conceptually pretty straight forward: You pass blocks of code to child models, and the child models respond as if you had typed that code into their Command Center. LevelSpace allows you to report strings, numbers, and lists from a child to its parent. It is not possible to directly report turtles, patches, links, or any of their respective sets. Further, it is not possible to push data from a child to its parent - parents must ask their children to report. This mimicks the way in which turtles cannot "push" data to the observer, but rely on the observer to ask them for it.
+The next primitive you use dictates which mode the file will be in until
+the file is closed, reading or writing. To switch modes, close and then reopen
+the file.
 
-In general, the LevelSpace syntax has been designed to align with existing NetLogo primitives whenever possible.
+The reading primitives include [file:read](#fileread), [file:read-line](#fileread-line), [file:read-characters](#fileread-characters),
+and [file:at-end?](#fileat-end?) Note that the file must exist already before you can open it
+for reading.
 
-### Headless and Interactive Models 
+> **Code Examples**: File Input Example
 
-LevelSpace has two different child model types; headless models and interactive models. They each have their strengths and weaknesses: 
+The primitives for writing are similar to the primitives that print things in
+the Command Center, except that the output gets saved to a file. They include
+[file:print](#fileprint), [file:show](#fileshow), [file:type](#filetype), and [file:write](#filewrite). Note that you can never
+"overwrite" data. In other words, if you attempt to write to a file with
+existing data, all new data will be appended to the end of the file. (If you
+want to overwrite a file, use [file:delete](#filedelete) to delete it, then open it for writing.)
 
-Interactive models 
-* are full-fledged models that give full access to their interface and widgets,
-* run a bit slower, and use more memory
-* are visible by default
+> **Code Examples**: File Output Example
 
-Headless Models
-* only give you access to their view and command center 
-* are faster and use less memory than interactive models. 
-* are hidden by default
+When you are finished using a file, you can use the command [file:close](#fileclose) to end
+your session with the file. If you wish to remove the file afterwards, use the
+primitive [file:delete](#filedelete) to delete it. To close multiple opened files, one needs to
+first select the file by using [file:open](#fileopen) before closing it.
 
-Typically you will want to use headless models when you are running a large number of models, or if you simply want to run them faster. Interactive models are good if you run a small amount of models, if you are writing a LevelSpace model and need to be able to debug, or if you need access to widgets during runtime.
+```netlogo
+;; Open 3 files
+file:open "myfile1.txt"
+file:open "myfile2.txt"
+file:open "myfile3.txt"
 
-### Keeping Track of Models
-
-Child models are kept track of in the extension with an id number, starting with 0, and all communication from parent to child is done by referencing this number, henceforth referred to as `model-id`.
-
-The easiest way to work with multiple models is to store their `model-id` in a list, and use NetLogo's list primitives to sort, filter, etc. them during runtime.
-
-Keeping track of models is important: Most LevelSpace primitives will fail and cause a runtime interruption if provided a `model-id` to a non-existing model. You can use `ls:model-exists? model-id` to check if `model-id` refers to an existing model.
-
-### A general use case: Asking and Reporting
-
-This use case is based on the Model Visualizer and Plotter Example-model from the NetLogo Models Library.
-
-A simple thing we can do is to open up some models, run them concurrently, and calculate the average of some reporter. Let's say that we are interested in finding the mean number of sheep in a bunch of Wolf Sheep Predation models. First we would open up some of these models, and set them up:
-
-```
-to setup
-  ls:reset
-  ca
-  ls:create-models 30 "Wolf Sheep Predation.nlogo"
-  ls:ask ls:models [ set grass? true setup ]
-  reset-ticks
-end
-```
-We then want to run all our child models, and then find out what the mean number of sheep is:
-```
-to go
-    ls:ask ls:models [ go ]
-    show mean [ count sheep ] ls:of ls:models
-end
+;; Now close the 3 files
+file:close
+file:open "myfile2.txt"
+file:close
+file:open "myfile1.txt"
+file:close
 ```
 
-### A general use case: Inter-Model Interactions
+Or, if you know you just want to close every file, you can use [file:close-all](#fileclose-all).
 
-This use case is based on the Model Interactions Example-model from the NetLogo Models Library.
+Two primitives worth noting are [file:write](#filewrite) and [file:read](#fileread) . These primitives are
+designed to easily save and retrieve NetLogo constants such as numbers, lists,
+booleans, and strings. [file:write](#filewrite) will always output the variable in such a
+manner that [file:read](#fileread) will be able to interpret it correctly.
 
-Let's imagine that we have two models: a Wolf Sheep Predation-model called `WSP`, and a Climate Change model called `CC`. Now let's imagine that we want the regrowth time in the wSP model to depend on the temperature in the CC model. Using LevelSpace's primitives, we could do something like this: 
+```netlogo
+file:open "myfile.txt"  ;; Opening file for writing
+ask turtles
+  [ file:write xcor file:write ycor ]
+file:close
 
-```
-  ; save new regrowth time in a temporary LevelSpace let-variable
-  ls:let new-regrowth-time 25 + ( abs [ temperature - 55 ] ls:of CC ) / 2
-
-  ; remove decimals, pass it to the wolf sheep predation model and change the time
-  ls:ask WSP [
-    set grass-regrowth-time round new-regrowth-time
-  ]
-
-  ; finally ask both models to go
-  ls:ask ls:models [ go ]
-``` 
-
-### A general Usecase: Tidying up "Dead" Child Models
-
-As previously mentioned, it is important to keep track of "living" and "dead" models when you dynamically create and dispose of models. Let us imagine we have some lists of models of different kinds, and we want to make sure that we only keep the models that are alive. After running code that kills child models we can use the `ls:model-exists?` primitive to clean up our list of models like this:
-
-```
-to-report remove-dead-models [list-of-models]
-  report filter [ [ model-id ] -> ls:model-exists model-id] list-of-models
-end
+file:open "myfile.txt"  ;; Opening file for reading
+ask turtles
+  [ setxy file:read file:read ]
+file:close
 ```
 
-We then reassign each list of models with this, e.g. 
+### Letting the user choose
 
-```
-
-set a-list-of-models remove-dead-models a-list-of-models
-set another-list-of-models remove-dead-models a-list-of-models
-```
-
-## Citing LevelSpace in Research
-
-If you use LevelSpace in research, we ask that you cite us,
-
-Hjorth, A.  Head, B. & Wilensky, U. (2015). “LevelSpace NetLogo extension”. http://ccl.northwestern.edu/rp/levelspace/index.shtml Evanston, IL: Center for Connected Learning and Computer Based Modeling, Northwestern University.
-
+The [[user-directory]], [[user-file]], and [[user-new-file]] primitives are
+useful when you want the user to choose a file or directory for your code to
+operate on.
 
 ## Primitives
 
-### Commanding and Reporting
+### 
 
-[`ls:ask`](#lsask)
-[`ls:of`](#lsof)
-[`ls:report`](#lsreport)
-[`ls:with`](#lswith)
-[`ls:let`](#lslet)
-
-### Logic and Control
-
-[`ls:models`](#lsmodels)
-[`ls:show`](#lsshow)
-[`ls:show-all`](#lsshow-all)
-[`ls:hide`](#lshide)
-[`ls:hide-all`](#lshide-all)
-[`ls:path-of`](#lspath-of)
-[`ls:name-of`](#lsname-of)
-[`ls:model-exists?`](#lsmodel-exists?)
-
-### Opening and Closing Models
-
-[`ls:create-models`](#lscreate-models)
-[`ls:create-interactive-models`](#lscreate-interactive-models)
-[`ls:close`](#lsclose)
-[`ls:reset`](#lsreset)
+[`file:at-end?`](#fileat-end?)
+[`file:close`](#fileclose)
+[`file:close-all`](#fileclose-all)
+[`file:delete`](#filedelete)
+[`file:exists?`](#fileexists?)
+[`file:flush`](#fileflush)
+[`file:open`](#fileopen)
+[`file:print`](#fileprint)
+[`file:read`](#fileread)
+[`file:read-characters`](#fileread-characters)
+[`file:read-line`](#fileread-line)
+[`file:show`](#fileshow)
+[`file:type`](#filetype)
+[`file:write`](#filewrite)
 
 
 
-### `ls:create-models`
+### `file:at-end?`
 
-```NetLogo
-ls:create-models number path
-ls:create-models number path anonymous command
+**file:at-end?**
+
+
+Reports true when there are no more characters left to read in from the current
+file (that was opened previously with [file:open](#fileopen)). Otherwise,
+reports false.
+
+```
+file:open "my-file.txt"
+print file:at-end?
+=> false ;; Can still read in more characters
+print file:read-line
+=> This is the last line in file
+print file:at-end?
+=> true ;; We reached the end of the file
 ```
 
+See also [file:open](#fileopen), [file:close-all](#fileclose-all).
 
-Create the specified number of instances of the given .nlogo model.  The path can be absolute, or relative to the main model. Compared with `ls:create-interactive-models`, this primitive creates lightweight models that are hidden by default. You should use this primitive if you plan on having many instances of the given model. The models may be shown using `ls:show`; when visible, they will have a view and command center, but no other widgets, e.g. plots or monitors.
 
-If given a command, LevelSpace will call the command after loading each instance of the model with the `model-id` as the argument. This allows you to easily store model ids in a variable or list when loading models, or do other initialization. For example, to store a model id in a variable, you can do:
 
-```NetLogo
-let model-id 0
-(ls:create-models "My-Model.nlogo" [ [id] -> set model-id id ])
+### `file:close`
+
+**file:close**
+
+
+Closes a file that has been opened previously with [file:open](#fileopen).
+
+Note that this and [file:close-all](#fileclose-all) are the only ways to restart
+to the beginning of an opened file or to switch between file modes.
+
+If no file is open, does nothing.
+
+See also [file:close-all](#fileclose-all), [file:open](#fileopen).
+
+
+
+### `file:close-all`
+
+**file:close-all**
+
+
+Closes all files (if any) that have been opened previously with [file:open](#fileopen).
+
+See also [file:close](#fileclose), [file:open](#fileopen).
+
+
+
+### `file:delete`
+
+**file:delete** ***string***
+
+
+Deletes the file specified as *string*.
+
+*string* must be an existing file with writable permission by the user. Also,
+the file cannot be open. Use the command [file:close](#fileclose) to close an
+opened file before deletion.
+
+Note that the string can either be a file name or an absolute file path. If it
+is a file name, it looks in whatever the current directory is. This can be
+changed using the command [[set-current-directory]]. It is defaulted to the
+model's directory.
+
+
+
+### `file:exists?`
+
+**file:exists?** ***string***
+
+
+Reports true if *string* is the name of an existing file on the system.
+Otherwise it reports false.
+
+Note that the string can either be a file name or an absolute file path. If it
+is a file name, it looks in whatever the current directory is. This can be
+changed using the command [[set-current-directory]]. It defaults to to the
+model's directory.
+
+
+
+### `file:flush`
+
+**file:flush**
+
+
+Forces file updates to be written to disk. When you use [file:write](#filewrite)
+or other output commands, the values may not be immediately written to disk.
+This improves the performance of the file output commands. Closing a file
+ensures that all output is written to disk.
+
+Sometimes you need to ensure that data is written to disk without closing the
+file. For example, you could be using a file to communicate with another program
+on your machine and want the other program to be able to see the output
+immediately.
+
+
+
+### `file:open`
+
+**file:open** ***string***
+
+
+This command will interpret *string* as a path name to a file and open the file.
+You may then use the reporters [file:read](#fileread), [file:read-line](#fileread-line),
+and [file:read-characters](#fileread-characters) to read in from the file, or
+[file:write](#filewrite), [file:print](#fileprint), [file:type](#filetype), or
+[file:show](#fileshow) to write out to the file.
+
+Note that you can only open a file for reading or writing but not both. The next
+file i/o primitive you use after this command dictates which mode the file is
+opened in. To switch modes, you need to close the file using [file:close](#fileclose).
+
+Also, the file must already exist if opening a file in reading mode.
+
+When opening a file in writing mode, all new data will be appended to the end of
+the original file. If there is no original file, a new blank file will be
+created in its place. (You must have write permission in the file's directory.)
+(If you don't want to append, but want to replace the file's existing contents,
+use [file:delete](#filedelete) to delete it first, perhaps inside a carefully if you're not
+sure whether it already exists.)
+
+Note that *string* can either be a file name or an absolute file path. If it
+is a file name, it looks in whatever the current directory is. This can be
+changed using the command [[set-current-directory]]. It is defaulted to the
+model's directory.
+
+```
+file:open "my-file-in.txt"
+print file:read-line
+=> First line in file ;; File is in reading mode
+file:open "C:\\NetLogo\\my-file-out.txt"
+;; assuming Windows machine
+file:print "Hello World" ;; File is in writing mode
 ```
 
+Opening a file does not close previously opened files. You can use [file:open](#fileopen)
+to switch back and forth between multiple open files.
+
+See also [file:close](#fileclose), [file:close-all](#fileclose-all).
 
 
-### `ls:create-interactive-models`
 
-```NetLogo
-ls:create-interactive-models number path
-ls:create-interactive-models number path anonymous command
+### `file:print`
+
+**file:print** ***value***
+
+
+Prints *value* to an opened file, followed by a carriage return.
+
+This agent is *not* printed before the value, unlike [file:show](#fileshow).
+
+Note that this command is the file i/o equivalent of print, and [file:open](#fileopen)
+needs to be called before this command can be used.
+
+See also [file:show](#fileshow), [file:type](#filetype), [file:write](#filewrite).
+
+
+
+### `file:read`
+
+**file:read**
+
+
+This reporter will read in the next constant from the opened file and interpret
+it as if it had been typed in the Command Center. It reports the resulting
+value. The result may be a number, list, string, boolean, or the special value
+nobody.
+
+Whitespace separates the constants. Each call to [file:read](#fileread) will
+skip past both leading and trailing whitespace.
+
+Note that strings need to have quotes around them. Use the command [file:write](#filewrite)
+to have quotes included.
+
+Also note that the [file:open](#fileopen) command must be called before this
+reporter can be used, and there must be data remaining in the file. Use the
+reporter [file:at-end?](#fileat-end) to determine if you are at the end of the
+file.
+
+```
+file:open "my-file.data"
+print file:read + 5
+;; Next value is the number 1
+=> 6
+print length file:read
+;; Next value is the list [1 2 3 4]
+=> 4
 ```
 
-
-Like `ls:create-models`, creates the specified number of instances of the given .nlogo model. Unlike `ls:create-models`, `ls:create-interactive-models` creates models that are visible by default, and have all widgets. You should use this primitive if you plan on having only a handful of instances of the given model, and would like to be able to interact with the instances through their interfaces during runtime.
-
+See also [file:open](#fileopen), [file:write](#filewrite).
 
 
-### `ls:close`
 
-```NetLogo
-ls:close model-or-list-of-models
+### `file:read-characters`
+
+**file:read-characters** ***number***
+
+
+Reports the given *number* of characters from an opened file as a string. If
+there are fewer than that many characters left, it will report all of the
+remaining characters.
+
+Note that it will return every character including newlines and spaces.
+
+Also note that the [file:open](#fileopen) command must be called before this
+reporter can be used, and there must be data remaining in the file. Use the
+reporter [file:at-end?](#fileat-end) to determine if you are at the end of the
+file.
+
+```
+file:open "my-file.txt"
+print file:read-characters 5
+;; Current line in file is "Hello World"
+=> Hello
 ```
 
-
-Close the model or models with the given `model-id`.
-
+See also [file:open](#fileopen).
 
 
-### `ls:reset`
 
-```NetLogo
-ls:reset
+### `file:read-line`
+
+**file:read-line**
+
+
+Reads the next line in the file and reports it as a string. It determines the
+end of the file by a carriage return, an end of file character or both in a row.
+It does not return the line terminator characters.
+
+Also note that the [file:open](#fileopen) command must be called before this
+reporter can be used, and there must be data remaining in the file. Use the
+reporter [file:at-end?](#fileat-end) to determine if you are at the end of the
+file.
+
+```
+file:open "my-file.txt"
+print file:read-line
+=> Hello World
 ```
 
-
-Close down all child models (and, recursively, their child models). You'll often want to call this in your setup procedure.
-
-Note that `clear-all` does *not* close LevelSpace models.
+See also [file:open](#fileopen).
 
 
 
-### `ls:ask`
+### `file:show`
 
-```NetLogo
-ls:ask model-or-list-of-models command argument
+**file:show** ***value***
+
+
+Prints *value* to an opened file, preceded by this agent agent, and followed by
+a carriage return. (This agent is included to help you keep track of what agents
+are producing which lines of output.) Also, all strings have their quotes
+included similar to [file:write](#filewrite).
+
+Note that this command is the file i/o equivalent of show, and [file:open](#fileopen)
+needs to be called before this command can be used.
+
+See also [file:print](#fileprint), [file:type](#filetype), [file:write](#filewrite).
+
+
+
+### `file:type`
+
+**file:type** ***value***
+
+
+Prints *value* to an opened file, *not* followed by a carriage return (unlike
+[file:print](#fileprint) and [file:show](#fileshow)). The lack of a carriage
+return allows you to print several values on the same line.
+
+This agent is *not* printed before the value. unlike [file:show](#fileshow).
+
+Note that this command is the file i/o equivalent of type, and [file:open](#fileopen)
+needs to be called before this command can be used.
+
+See also [file:print](#fileprint), [file:show](#fileshow), and [file:write](#filewrite).
+
+
+
+### `file:write`
+
+**file:write** ***value***
+
+
+This command will output *value*, which can be a number, string, list, boolean,
+or nobody to an opened file, not followed by a carriage return (unlike
+[file:print](#fileprint) and [file:show](#fileshow)).
+
+This agent is *not* printed before the value, unlike [file:show](#fileshow). Its
+output also includes quotes around strings and is prepended with a space. It
+will output the value in such a manner that [file:read](#fileread) will be able
+to interpret it.
+
+Note that this command is the file i/o equivalent of write, and [file:open](#fileopen)
+needs to be called before this command can be used.
+
+```
+file:open "locations.txt"
+ask turtles
+  [ file:write xcor file:write ycor ]
 ```
 
+See also [file:print](#fileprint), [file:show](#fileshow), [file:type](#filetype).
 
-Ask the given child model or list of child models to run the given command. This is the primary of doing things with child models. For example:
 
-```NetLogo
-ls:ask model-id [ create-turtles 5 ]
-```
 
-You can also ask a list of models to all do the same thing:
 
-```NetLogo
-ls:ask ls:models [ create-turtles 5 ]
-```
-
-You may supply the command with arguments, just like you would with anonymous commands:
-
-```NetLogo
-let turtle-id 0
-let speed 5
-(ls:ask model-id [ [t s] -> ask turtle t [ fd s ] ] turtle-id speed)
-```
-
-Note that the commands cannot access variables in the parent model directly. You must either pass information in through arguments or using `ls:let`.
-
-
-
-### `ls:of`
-
-```NetLogo
-ls:of reporter model-or-list-of-models
-```
-
-
-Run the given reporter in the given model and report the result.
-
-`ls:of` is designed to work like NetLogo's inbuilt `of`: If you send `ls:of` a `model-id`, it will report the value of the reporter from that model. If you send it a list of model-ids, it will report a list of values of the reporter string from all models. You cannot pass arguments to `ls:of`, but you can use `ls:let`.
-
-```NetLogo
-[ count turtles ] ls:of model-id
-```
-
-
-
-### `ls:report`
-
-```NetLogo
-ls:report model-or-list-of-models reporter argument
-```
-
-
-Run the given reporter in the given model and report the result. This form exists to allow you to pass arguments to the reporter.
-
-```NetLogo
-let turtle-id 0
-(ls:report model-id [ [a-turtle] -> [ color ] of turtle a-turtle ] turtle-id)
-```
-
-
-
-### `ls:with`
-
-```NetLogo
-ls:with list-of-models reporter
-```
-
-
-Reports a new list of models containing only those models that report `true` when they run the reporter block.
-
-```NetLogo
-ls:models ls:with [ count turtles > 100 ]
-```
-
-
-
-### `ls:let`
-
-```NetLogo
-ls:let variable-name value
-```
-
-
-Creates a variable containing the given data that can be accessed by the child models.
-
-```NetLogo
-ask turtles [
-  ls:let my-color color
-  ls:ask my-model [
-    ask turtles [ set color my-color ]
-  ]
-]
-```
-
-`ls:let` works quite similar to `let` in that the variable is only locally accessible:
-
-```NetLogo
-ask turtles [
-  ls:let my-color color
-]
-;; my-color is innaccessible here
-```
-
-`ls:let` is very similar to `let`, except in a few cases.
-
-- `ls:let` will overwrite previous values in the variable
-
-If you do
-
-```NetLogo
-ls:let my-var 5
-ls:let my-var 6
-```
-
-`my-var` will be set equal to `6`. There is no `ls:set`.
-
-- `ls:let` supports variable shadowing
-
-If you do
-
-```NetLogo
-ls:let my-var 5
-ask turtles [
-  ls:let my-var 6
-  ls:ask child-model [ show my-var ]
-]
-ls:ask child-model [ show my-var ]
-```
-
-`child-model` will show `6` and then `5`. This is known as [variable shadowing](https://en.wikipedia.org/wiki/Variable_shadowing).
-
-- The parent model cannot directly read the value of an ls variable
-
-For example, this does *not* work.
-
-```NetLogo
-ls:let my-var 5
-show my-var
-```
-
-This is intentional. ls variables are meant to be used for sharing data with child models. The parent model already has access to the data.
-
-Furthermore, changing the value of an ls let variable in a child model will not affect it in any other model. For example:
-
-```NetLogo
-ls:let my-var 0
-ls:ask ls:models [
-  set my-var my-var + 1
-  show my-var
-]
-```
-
-All models will print `1`.
-
-- `ls:let` does not respect the scope of `if`, `when`, and `repeat`
-
-This behavior should be considered a bug and not relied upon. It is an unfortunate consequence of the way the NetLogo engine works. Hopefully, we'll be able to correct this in a future version of NetLogo.
-
-For example, this is allowable:
-
-```NetLogo
-if true [
-  ls:let my-var 5
-]
-ls:ask child-model [ create-turtles my-var ]
-```
-
-The scope of `ask` is respected, however.
-
-
-
-### `ls:models`
-
-```NetLogo
-ls:models
-```
-
-
-Report a list of model-ids for all existing models.
-
-
-
-### `ls:show`
-
-```NetLogo
-ls:show model-or-list-of-models
-```
-
-
-Makes all of the given models visible.
-
-
-
-### `ls:show-all`
-
-```NetLogo
-ls:show-all model-or-list-of-models
-```
-
-
-Makes all of the given models *and their descendents* visible.
-
-
-
-### `ls:hide`
-
-```NetLogo
-ls:hide model-or-list-of-models
-```
-
-
-Hide all of the given models. Hiding models is a good way of making your simulation run faster.
-
-
-
-### `ls:hide-all`
-
-```NetLogo
-ls:hide-all model-or-list-of-models
-```
-
-
-Hide all of the given models *and their descendents*. Hiding models is a good way of making your simulation run faster.
-
-
-
-### `ls:path-of`
-
-```NetLogo
-ls:path-of model-or-list-of-models
-```
-
-
-Report the full path, including the .nlogo file name, of the model. If a list of models is given, a list of paths is reported.
-
-
-
-### `ls:name-of`
-
-```NetLogo
-ls:name-of model-or-list-of-models
-```
-
-
-Reports the name of the .nlogo file of the model. This is the name of the window in which the model appears when visible. If a list of models is given, a list of names is reported.
-
-
-
-### `ls:model-exists?`
-
-```NetLogo
-ls:model-exists? model-or-list-of-models
-```
-
-
-Report a boolean value for whether there is a model with that model-id. This is often useful when you are dynamically generating models, and want to ensure that you are not asking models that no longer exist to do stuff.
-
-
-
-## Terms of Use
-
-Copyright 1999-2016 by Uri Wilensky.
-
-This program is free software; you can redistribute it and/or modify it under the terms of the [GNU General Public License](http://www.gnu.org/copyleft/gpl.html) as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
